@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Orçamento AI</title>
+
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 40px auto;
+            padding: 20px;
+            background: #f4f4f4;
+        }
+
+        .card {
+            background: white;
+            padding: 20px;
+            margin-bottom: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        button {
+            padding: 10px 16px;
+            margin: 5px;
+            cursor: pointer;
+        }
+
+        input, select {
+            padding: 8px;
+            margin: 5px;
+        }
+
+        #saldo {
+            font-size: 28px;
+            font-weight: bold;
+        }
+
+        .transacao {
+            padding: 8px;
+            border-bottom: 1px solid #ddd;
+        }
+    </style>
+</head>
+
+<body>
+
+<h1>Orçamento AI</h1>
+
+<div class="card">
+    <h2>Saldo</h2>
+    <div id="saldo">Carregando...</div>
+</div>
+
+<div class="card">
+    <h2>Registrar por áudio</h2>
+
+    <p class="audio-ajuda">
+        Fale de forma simples e direta, informando o valor e o motivo da transação.
+        Por exemplo: <strong>"Gastei 50 reais no mercado hoje"</strong> ou
+        <strong>"Recebi 3200 reais de salário hoje"</strong>.
+    </p>
+
+    <button id="btnGravar">Gravar áudio</button>
+    <button id="btnParar" disabled>Parar</button>
+
+    <p id="statusAudio">Aguardando...</p>
+
+    <audio id="audioResposta" controls></audio>
+</div>
+
+<div class="card">
+    <h2>Adicionar transação manual</h2>
+
+    <input id="descricao" placeholder="Descrição">
+    <input id="valor" type="number" step="0.01" placeholder="Valor">
+
+    <select id="tipo">
+        <option value="DESPESA">Despesa</option>
+        <option value="RECEITA">Receita</option>
+    </select>
+
+    <select id="categoria">
+        <option value="ALIMENTACAO">Alimentação</option>
+        <option value="TRANSPORTE">Transporte</option>
+        <option value="MORADIA">Moradia</option>
+        <option value="SAUDE">Saúde</option>
+        <option value="LAZER">Lazer</option>
+        <option value="RENDA">Renda</option>
+        <option value="OUTROS">Outros</option>
+    </select>
+
+    <button onclick="adicionarTransacao()">Adicionar</button>
+</div>
+
+<div class="card">
+    <h2>Transações</h2>
+    <div id="listaTransacoes"></div>
+</div>
+
+<script>
+    let mediaRecorder;
+    let audioChunks = [];
+
+    async function carregarSaldo() {
+        const resposta = await fetch('/transacoes/saldo');
+        const saldo = await resposta.text();
+
+        document.getElementById('saldo').innerText =
+            'R$ ' + Number(saldo).toFixed(2);
+    }
+
+    async function carregarTransacoes() {
+        const resposta = await fetch('/transacoes');
+        const transacoes = await resposta.json();
+
+        const lista = document.getElementById('listaTransacoes');
+        lista.innerHTML = '';
+
+        transacoes.forEach(t => {
+            const div = document.createElement('div');
+            div.className = 'transacao';
+
+            div.innerText =
+                `${t.descricao} | ${t.tipo} | R$ ${t.valor} | ${t.categoria}`;
+
+            lista.appendChild(div);
+        });
+    }
+
+    async function adicionarTransacao() {
+        const descricao = document.getElementById('descricao').value;
+        const valor = document.getElementById('valor').value;
+        const tipo = document.getElementById('tipo').value;
+        const categoria = document.getElementById('categoria').value;
+
+        const hoje = new Date().toISOString().split('T')[0];
+
+        const transacao = {
+            descricao,
+            valor: Number(valor),
+            tipo,
+            categoria,
+            data: hoje
+        };
+
+        await fetch('/transacoes', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(transacao)
+        });
+
+        carregarSaldo();
+        carregarTransacoes();
+    }
+
+    document.getElementById('btnGravar').onclick = async () => {
+        const stream = await navigator.mediaDevices.getUserMedia({
+            audio: true
+        });
+
+        mediaRecorder = new MediaRecorder(stream);
+        audioChunks = [];
+
+        mediaRecorder.ondataavailable = evento => {
+            audioChunks.push(evento.data);
+        };
+
+        mediaRecorder.onstop = async () => {
+            const audioBlob = new Blob(audioChunks, {
+                type: 'audio/webm'
+            });
+
+            const formData = new FormData();
+            formData.append('arquivo', audioBlob, 'audio.webm');
+
+            document.getElementById('statusAudio').innerText =
+                'Processando áudio...';
+
+            const resposta = await fetch('/audio', {
+                method: 'POST',
+                body: formData
+            });
+
+            const audioResposta = await resposta.blob();
+
+            const url = URL.createObjectURL(audioResposta);
+
+            document.getElementById('audioResposta').src = url;
+
+            document.getElementById('statusAudio').innerText =
+                'Concluído';
+
+            carregarSaldo();
+            carregarTransacoes();
+        };
+
+        mediaRecorder.start();
+
+        document.getElementById('btnGravar').disabled = true;
+        document.getElementById('btnParar').disabled = false;
+
+        document.getElementById('statusAudio').innerText =
+            'Gravando...';
+    };
+
+    document.getElementById('btnParar').onclick = () => {
+        mediaRecorder.stop();
+
+        document.getElementById('btnGravar').disabled = false;
+        document.getElementById('btnParar').disabled = true;
+    };
+
+    carregarSaldo();
+    carregarTransacoes();
+</script>
+
+</body>
+</html>

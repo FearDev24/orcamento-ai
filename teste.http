@@ -1,0 +1,10 @@
+POST http://localhost:8080/transacoes
+Content-Type: application/json
+
+{
+  "descricao": "Mercado",
+  "valor": 150.00,
+  "tipo": "DESPESA",
+  "categoria": "ALIMENTACAO",
+  "data": "2026-09-28"
+}
